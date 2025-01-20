@@ -32,6 +32,8 @@ def get_db_connection():
 
 @app.post("/api/v1/zones/{zone_name}/records/a")
 async def create_a_record(zone_name: str, record: ARecord):
+    conn = None
+    cursor = None
     try:
         if not zone_name.endswith('.'):
             zone_name = zone_name + '.'
@@ -39,44 +41,61 @@ async def create_a_record(zone_name: str, record: ARecord):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Check if zone exists
-        cursor.execute("SELECT id FROM domains WHERE name = %s", (zone_name,))
-        zone = cursor.fetchone()
-        
-        if not zone:
-            # Create zone
-            cursor.execute(
-                "INSERT INTO domains (name, type) VALUES (%s, %s)",
-                (zone_name, "NATIVE")
-            )
-            conn.commit()
-            zone_id = cursor.lastrowid
-        else:
-            zone_id = zone['id']
+        try:
+            # Check if zone exists
+            cursor.execute("SELECT id FROM domains WHERE name = %s", (zone_name,))
+            zone = cursor.fetchone()
             
-        # Create A record
-        record_name = record.name if record.name.endswith(f".{zone_name}") else f"{record.name}.{zone_name}"
-        
-        cursor.execute("""
-            INSERT INTO records (domain_id, name, type, content, ttl)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (zone_id, record_name, "A", record.content, record.ttl))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
+            if not zone:
+                # Create zone
+                cursor.execute(
+                    "INSERT INTO domains (name, type) VALUES (%s, %s)",
+                    (zone_name, "NATIVE")
+                )
+                conn.commit()
+                zone_id = cursor.lastrowid
+            else:
+                zone_id = zone['id']
+                
+            # Create A record
+            record_name = record.name if record.name.endswith(f".{zone_name}") else f"{record.name}.{zone_name}"
+            
+            cursor.execute(
+                "INSERT INTO records (domain_id, name, type, content, ttl) VALUES (%s, %s, %s, %s, %s)",
+                (zone_id, record_name, "A", record.content, record.ttl)
+            )
+            
+            conn.commit()
+
+        except mysql.connector.Error as e:
+            if conn:
+                conn.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
         # Notify PowerDNS of the change
-        response = requests.put(
-            f"{PDNS_API_URL}/servers/localhost/zones/{zone_name}",
-            headers={"X-API-Key": PDNS_API_KEY},
-            json={"serial": 0}  # Force serial update
-        )
+        try:
+            response = requests.put(
+                f"{PDNS_API_URL}/servers/localhost/zones/{zone_name}",
+                headers={"X-API-Key": PDNS_API_KEY},
+                json={"serial": 0}  # Force serial update
+            )
+
+            if response.status_code >= 400:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"PowerDNS API error: {response.text}"
+                )
+
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"PowerDNS API error: {str(e)}")
 
         return {"message": "A record created successfully"}
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     import uvicorn
