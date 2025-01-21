@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Path
+from pydantic import BaseModel, Field, ConfigDict
 import requests
-from typing import Optional, Dict
+from typing import Optional, Dict, Annotated
 import os
 import logging
 import mysql.connector
@@ -47,60 +47,61 @@ class RecordType(str, Enum):
 
 class DNSRecordBase(BaseModel):
     """Base model for DNS records with common fields."""
+    model_config = ConfigDict(json_schema_extra={
+        "description": "Base model for DNS records with common fields"
+    })
+
     name: str = Field(
-        ...,
         description="The name of the record relative to the zone (e.g., 'www' for www.example.com)",
-        example="www"
+        json_schema_extra={"example": "www"}
     )
     ttl: Optional[int] = Field(
         default=3600,
         description="Time To Live in seconds",
         ge=1,
         le=86400,
-        example=3600
+        json_schema_extra={"example": 3600}
     )
 
 class ARecord(DNSRecordBase):
     """Model for A records that map hostnames to IPv4 addresses."""
-    content: str = Field(
-        ...,
-        description="The IPv4 address",
-        pattern=r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$",
-        example="192.168.1.100"
-    )
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "name": "www",
-                "content": "192.168.1.100",
-                "ttl": 3600
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "description": "Model for A records that map hostnames to IPv4 addresses",
+        "example": {
+            "name": "www",
+            "content": "192.168.1.100",
+            "ttl": 3600
         }
+    })
+
+    content: str = Field(
+        description="The IPv4 address",
+        pattern=r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+        json_schema_extra={"example": "192.168.1.100"}
+    )
 
 class TXTRecord(DNSRecordBase):
     """Model for TXT records that store text data."""
-    content: str = Field(
-        ...,
-        description="The text content of the record. Quotes will be added automatically if needed.",
-        example="v=spf1 include:_spf.example.com ~all"
-    )
+    model_config = ConfigDict(json_schema_extra={
+        "description": "Model for TXT records that store text data",
+        "examples": [
+            {
+                "name": "verification",
+                "content": "google-site-verification=abc123def456",
+                "ttl": 3600
+            },
+            {
+                "name": "spf",
+                "content": "v=spf1 include:_spf.example.com ~all",
+                "ttl": 3600
+            }
+        ]
+    })
 
-    class Config:
-        schema_extra = {
-            "examples": [
-                {
-                    "name": "verification",
-                    "content": "google-site-verification=abc123def456",
-                    "ttl": 3600
-                },
-                {
-                    "name": "spf",
-                    "content": "v=spf1 include:_spf.example.com ~all",
-                    "ttl": 3600
-                }
-            ]
-        }
+    content: str = Field(
+        description="The text content of the record. Quotes will be added automatically if needed.",
+        json_schema_extra={"example": "v=spf1 include:_spf.example.com ~all"}
+    )
 
 def get_db_connection():
     return mysql.connector.connect(
@@ -112,11 +113,17 @@ def get_db_connection():
 
 class APIResponse(BaseModel):
     """Standard API response model."""
-    message: str = Field(..., description="Response message indicating success or failure")
+    message: str = Field(
+        description="Response message indicating success or failure",
+        min_length=1
+    )
 
 class ErrorResponse(BaseModel):
     """Error response model."""
-    detail: str = Field(..., description="Detailed error message")
+    detail: str = Field(
+        description="Detailed error message",
+        min_length=1
+    )
 
 @app.post(
     "/api/v1/zones/{zone_name}/records/a",
@@ -152,8 +159,8 @@ class ErrorResponse(BaseModel):
     description="Creates a new A record in the specified zone. If the zone doesn't exist, it will be created automatically."
 )
 async def create_a_record(
-    zone_name: str = Field(..., description="The name of the zone (e.g., example.com)", example="example.com"),
-    record: ARecord = Field(..., description="The A record to create")
+    zone_name: Annotated[str, Path(description="The name of the zone (e.g., example.com)", examples=["example.com"])],
+    record: ARecord
 ):
     conn = None
     cursor = None
@@ -261,8 +268,8 @@ async def create_a_record(
     The content will be automatically quoted if it contains spaces."""
 )
 async def create_txt_record(
-    zone_name: str = Field(..., description="The name of the zone (e.g., example.com)", example="example.com"),
-    record: TXTRecord = Field(..., description="The TXT record to create")
+    zone_name: Annotated[str, Path(description="The name of the zone (e.g., example.com)", examples=["example.com"])],
+    record: TXTRecord
 ):
     conn = None
     cursor = None
