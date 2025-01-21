@@ -1,31 +1,106 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import requests
-from typing import Optional
+from typing import Optional, Dict
 import os
 import logging
 import mysql.connector
 from dotenv import load_dotenv
+from enum import Enum
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="DNS Manager API")
+description = """
+CitadelDNS API allows you to manage DNS records through a RESTful interface.
+It provides endpoints for creating and managing various types of DNS records.
+
+## Features
+
+* Create A records for IPv4 addresses
+* Create TXT records for domain verification, SPF records, etc.
+* Automatic zone creation if it doesn't exist
+* Integration with PowerDNS backend
+"""
+
+app = FastAPI(
+    title="CitadelDNS Manager API",
+    description=description,
+    version="1.0.0",
+    contact={
+        "name": "CitadelDNS Team",
+        "url": "https://github.com/juniorpayne/CitadelDNS",
+    },
+    license_info={
+        "name": "MIT",
+    },
+)
 
 PDNS_API_URL = "http://localhost:8081/api/v1"
 PDNS_API_KEY = os.getenv("PDNS_API_KEY", "changeme")
 
-class ARecord(BaseModel):
-    name: str
-    content: str
-    ttl: Optional[int] = 3600
+class RecordType(str, Enum):
+    A = "A"
+    TXT = "TXT"
 
-class TXTRecord(BaseModel):
-    name: str
-    content: str
-    ttl: Optional[int] = 3600
+class DNSRecordBase(BaseModel):
+    """Base model for DNS records with common fields."""
+    name: str = Field(
+        ...,
+        description="The name of the record relative to the zone (e.g., 'www' for www.example.com)",
+        example="www"
+    )
+    ttl: Optional[int] = Field(
+        default=3600,
+        description="Time To Live in seconds",
+        ge=1,
+        le=86400,
+        example=3600
+    )
+
+class ARecord(DNSRecordBase):
+    """Model for A records that map hostnames to IPv4 addresses."""
+    content: str = Field(
+        ...,
+        description="The IPv4 address",
+        pattern=r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$",
+        example="192.168.1.100"
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "name": "www",
+                "content": "192.168.1.100",
+                "ttl": 3600
+            }
+        }
+
+class TXTRecord(DNSRecordBase):
+    """Model for TXT records that store text data."""
+    content: str = Field(
+        ...,
+        description="The text content of the record. Quotes will be added automatically if needed.",
+        example="v=spf1 include:_spf.example.com ~all"
+    )
+
+    class Config:
+        schema_extra = {
+            "examples": [
+                {
+                    "name": "verification",
+                    "content": "google-site-verification=abc123def456",
+                    "ttl": 3600
+                },
+                {
+                    "name": "spf",
+                    "content": "v=spf1 include:_spf.example.com ~all",
+                    "ttl": 3600
+                }
+            ]
+        }
 
 def get_db_connection():
     return mysql.connector.connect(
@@ -35,8 +110,51 @@ def get_db_connection():
         database="powerdns"
     )
 
-@app.post("/api/v1/zones/{zone_name}/records/a")
-async def create_a_record(zone_name: str, record: ARecord):
+class APIResponse(BaseModel):
+    """Standard API response model."""
+    message: str = Field(..., description="Response message indicating success or failure")
+
+class ErrorResponse(BaseModel):
+    """Error response model."""
+    detail: str = Field(..., description="Detailed error message")
+
+@app.post(
+    "/api/v1/zones/{zone_name}/records/a",
+    response_model=APIResponse,
+    responses={
+        200: {
+            "description": "A record created successfully",
+            "content": {
+                "application/json": {
+                    "example": {"message": "A record created successfully"}
+                }
+            }
+        },
+        422: {
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Invalid IPv4 address format"}
+                }
+            }
+        },
+        500: {
+            "description": "Internal Server Error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Database error: Connection refused"}
+                }
+            }
+        }
+    },
+    tags=["DNS Records"],
+    summary="Create an A record",
+    description="Creates a new A record in the specified zone. If the zone doesn't exist, it will be created automatically."
+)
+async def create_a_record(
+    zone_name: str = Field(..., description="The name of the zone (e.g., example.com)", example="example.com"),
+    record: ARecord = Field(..., description="The A record to create")
+):
     conn = None
     cursor = None
     try:
@@ -102,8 +220,50 @@ async def create_a_record(zone_name: str, record: ARecord):
         if conn:
             conn.close()
 
-@app.post("/api/v1/zones/{zone_name}/records/txt")
-async def create_txt_record(zone_name: str, record: TXTRecord):
+@app.post(
+    "/api/v1/zones/{zone_name}/records/txt",
+    response_model=APIResponse,
+    responses={
+        200: {
+            "description": "TXT record created successfully",
+            "content": {
+                "application/json": {
+                    "example": {"message": "TXT record created successfully"}
+                }
+            }
+        },
+        422: {
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Field required: content"}
+                }
+            }
+        },
+        500: {
+            "description": "Internal Server Error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Database error: Connection refused"}
+                }
+            }
+        }
+    },
+    tags=["DNS Records"],
+    summary="Create a TXT record",
+    description="""Creates a new TXT record in the specified zone. If the zone doesn't exist, it will be created automatically.
+    
+    Common uses for TXT records:
+    * Domain ownership verification (e.g., for Google Workspace)
+    * SPF records for email authentication
+    * DKIM records for email signing
+    
+    The content will be automatically quoted if it contains spaces."""
+)
+async def create_txt_record(
+    zone_name: str = Field(..., description="The name of the zone (e.g., example.com)", example="example.com"),
+    record: TXTRecord = Field(..., description="The TXT record to create")
+):
     conn = None
     cursor = None
     try:
