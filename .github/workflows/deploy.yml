@@ -31,9 +31,20 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
+            # Install required packages
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip
+
+            # Clone and setup application
             cd ~/CitadelDNS || git clone https://github.com/juniorpayne/CitadelDNS.git ~/CitadelDNS
             cd ~/CitadelDNS
             git fetch origin
-            git reset --hard origin/main
+            git reset --hard origin/development
             pip3 install -r requirements.txt
+
+            # Setup systemd service
+            sudo cp citadel-dns.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+            sudo systemctl enable citadel-dns
             sudo systemctl restart citadel-dns
+            sudo systemctl status citadel-dns
