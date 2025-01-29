@@ -1,0 +1,13 @@
+[Unit]
+Description=CitadelDNS Service
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/CitadelDNS
+ExecStart=/usr/bin/python3 src/app.py
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

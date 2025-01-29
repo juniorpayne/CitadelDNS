@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for CitadelDNS PowerDNS infrastructure'
+
+Parameters:
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-Public-Subnet
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PowerDNSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for PowerDNS server
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-SG
+
+  PowerDNSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-Role
+
+  PowerDNSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref PowerDNSRole
+
+  PowerDNSInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref PowerDNSSecurityGroup
+      IamInstanceProfile: !Ref PowerDNSInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -y epel-release
+          yum install -y pdns pdns-backend-mysql mysql-server
+          systemctl start mysqld
+          systemctl enable mysqld
+          systemctl start pdns
+          systemctl enable pdns
+      Tags:
+        - Key: Name
+          Value: CitadelDNS-Server
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+Outputs:
+  PowerDNSPublicIP:
+    Description: Public IP address of the PowerDNS server
+    Value: !GetAtt PowerDNSInstance.PublicIp
+  PowerDNSPrivateIP:
+    Description: Private IP address of the PowerDNS server
+    Value: !GetAtt PowerDNSInstance.PrivateIp
