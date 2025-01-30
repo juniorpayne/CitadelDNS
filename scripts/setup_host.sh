@@ -82,9 +82,14 @@ fi
 # Install PowerDNS and its MySQL backend
 if ! command_exists pdns_server; then
     echo "Installing PowerDNS and MySQL backend..."
-    # Add PowerDNS repository
-    curl -fsSL https://repo.powerdns.com/FD380FBB-pub.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pdns.gpg
-    curl -fsSL https://repo.powerdns.com/CBC8B383-pub.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pdns-master.gpg
+    
+    # Add PowerDNS repository keys
+    for KEY in FD380FBB CBC8B383; do
+        echo "Adding key: $KEY"
+        curl -fsSL "https://repo.powerdns.com/${KEY}-pub.asc" | \
+            gpg --dearmor | \
+            sudo tee "/etc/apt/trusted.gpg.d/pdns-${KEY,,}.gpg" > /dev/null
+    done
     
     # Get Ubuntu codename and use jammy if noble is not yet supported
     UBUNTU_CODENAME=$(lsb_release -cs)
@@ -92,9 +97,19 @@ if ! command_exists pdns_server; then
         UBUNTU_CODENAME="jammy"
     fi
     
-    echo "deb [arch=amd64] http://repo.powerdns.com/ubuntu ${UBUNTU_CODENAME}-auth-master main" | \
+    # Add repository
+    echo "Adding PowerDNS repository for ${UBUNTU_CODENAME}..."
+    echo "deb [signed-by=/etc/apt/trusted.gpg.d/pdns-cbc8b383.gpg] http://repo.powerdns.com/ubuntu ${UBUNTU_CODENAME}-auth-master main" | \
         sudo tee /etc/apt/sources.list.d/pdns.list
-    sudo apt-get update
+    
+    # Update package lists
+    echo "Updating package lists..."
+    sudo apt-get update || {
+        echo "Failed to update package lists. Trying alternative approach..."
+        sudo rm -f /etc/apt/sources.list.d/pdns.list
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y pdns-server pdns-backend-mysql
+    }
     
     # Install PowerDNS packages
     sudo apt-get install -y pdns-server pdns-backend-mysql
