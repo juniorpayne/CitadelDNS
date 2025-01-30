@@ -37,21 +37,46 @@ if ! command_exists mysql; then
     sudo systemctl start mysql
     sudo systemctl enable mysql
     
-    # Secure MySQL installation
+    # Reset MySQL root password and secure installation
     echo "Securing MySQL installation..."
-    sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'CitadelDNS123!';"
-    sudo mysql -e "DELETE FROM mysql.user WHERE User='';"
-    sudo mysql -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
-    sudo mysql -e "DROP DATABASE IF EXISTS test;"
-    sudo mysql -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
-    sudo mysql -e "FLUSH PRIVILEGES;"
     
-    # Create PowerDNS database and user
-    echo "Creating PowerDNS database and user..."
-    sudo mysql -e "CREATE DATABASE IF NOT EXISTS powerdns;"
-    sudo mysql -e "CREATE USER IF NOT EXISTS 'powerdns'@'localhost' IDENTIFIED BY 'powerdns';"
-    sudo mysql -e "GRANT ALL PRIVILEGES ON powerdns.* TO 'powerdns'@'localhost';"
-    sudo mysql -e "FLUSH PRIVILEGES;"
+    # Stop MySQL
+    sudo systemctl stop mysql
+
+    # Start MySQL in safe mode
+    sudo mysqld_safe --skip-grant-tables --skip-networking &
+    sleep 5  # Wait for MySQL to start
+
+    # Reset root password
+    echo "Resetting root password..."
+    sudo mysql << EOF
+FLUSH PRIVILEGES;
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'CitadelDNS123!';
+FLUSH PRIVILEGES;
+EOF
+
+    # Stop MySQL safe mode
+    sudo pkill mysqld
+    sleep 5
+
+    # Start MySQL normally
+    sudo systemctl start mysql
+    sleep 5
+
+    # Secure the installation
+    echo "Configuring MySQL security settings..."
+    mysql -u root -pCitadelDNS123! << EOF
+DELETE FROM mysql.user WHERE User='';
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+FLUSH PRIVILEGES;
+
+CREATE DATABASE IF NOT EXISTS powerdns;
+CREATE USER IF NOT EXISTS 'powerdns'@'localhost' IDENTIFIED BY 'powerdns';
+GRANT ALL PRIVILEGES ON powerdns.* TO 'powerdns'@'localhost';
+FLUSH PRIVILEGES;
+EOF
 fi
 
 # Install PowerDNS and its MySQL backend
