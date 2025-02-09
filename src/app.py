@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Path
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 import requests
 from typing import Optional, Dict, Annotated
@@ -36,6 +37,14 @@ app = FastAPI(
     license_info={
         "name": "MIT",
     },
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 PDNS_API_URL = "http://localhost:8081/api/v1"
@@ -343,4 +352,4 @@ async def create_txt_record(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=53289)
