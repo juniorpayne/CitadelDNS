@@ -1,4 +1,4 @@
-import { AppShell, Header, Title, Container } from '@mantine/core';
+import { AppShell, Container, Title } from '@mantine/core';
 import { ReactNode } from 'react';
 
 interface LayoutProps {
@@ -8,16 +8,17 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   return (
     <AppShell
-      padding="md"
-      header={
-        <Header height={60} p="xs">
-          <Title order={1}>CitadelDNS Manager</Title>
-        </Header>
-      }
+      header={{ height: 60 }}
     >
-      <Container size="lg">
-        {children}
-      </Container>
+      <AppShell.Header p="xs">
+        <Title order={1}>CitadelDNS Manager</Title>
+      </AppShell.Header>
+
+      <AppShell.Main>
+        <Container size="lg">
+          {children}
+        </Container>
+      </AppShell.Main>
     </AppShell>
   );
 }

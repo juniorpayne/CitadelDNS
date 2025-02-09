@@ -1,4 +1,4 @@
-import { TextInput, NumberInput, Button, Select, Stack, Paper } from '@mantine/core';
+import { TextInput, NumberInput, Button, Select, Stack, Paper, rem } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useMutation } from '@tanstack/react-query';
@@ -57,9 +57,9 @@ export function DNSRecordForm() {
   });
 
   return (
-    <Paper p="md" radius="md" withBorder>
+    <Paper shadow="xs" p={rem(20)} radius="md" withBorder>
       <form onSubmit={handleSubmit}>
-        <Stack spacing="md">
+        <Stack gap="md">
           <TextInput
             label="Zone Name"
             placeholder="example.com"
@@ -105,6 +105,7 @@ export function DNSRecordForm() {
           <Button
             type="submit"
             loading={createRecord.isPending}
+            mt="md"
           >
             Create DNS Record
           </Button>
