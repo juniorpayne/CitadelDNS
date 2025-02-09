@@ -9,7 +9,7 @@ const queryClient = new QueryClient();
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider withGlobalStyles withNormalizeCSS>
+      <MantineProvider>
         <Notifications />
         <Layout>
           <DNSRecordForm />

@@ -2,11 +2,14 @@ import { TextInput, NumberInput, Button, Select, Stack, Paper, rem } from '@mant
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useMutation } from '@tanstack/react-query';
-import { dnsApi, DNSRecord } from '../api/client';
+import { dnsApi } from '../api/client';
 
-interface DNSRecordFormValues extends DNSRecord {
+interface DNSRecordFormValues {
   zoneName: string;
   type: 'A' | 'TXT';
+  name: string;
+  content: string;
+  ttl: number;
 }
 
 export function DNSRecordForm() {
@@ -22,7 +25,7 @@ export function DNSRecordForm() {
       zoneName: (value) => (!value ? 'Zone name is required' : null),
       name: (value) => (!value ? 'Record name is required' : null),
       content: (value) => (!value ? 'Content is required' : null),
-      ttl: (value) => (value < 1 || value > 86400 ? 'TTL must be between 1 and 86400' : null),
+      ttl: (value?: number) => (!value || value < 1 || value > 86400 ? 'TTL must be between 1 and 86400' : null),
     },
   });
 

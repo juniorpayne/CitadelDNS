@@ -23,7 +23,7 @@ fi
 log "Installing dependencies..."
 apt-get update
 apt-get install -y \
-    mysql-server \
+    default-mysql-server \
     pdns-server \
     pdns-backend-mysql \
     python3 \
@@ -36,8 +36,20 @@ log "Configuring MySQL..."
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 PDNS_DB_PASSWORD=$(openssl rand -hex 16)
 
+# Start MySQL service
+service mariadb start || service mysql start
+
+# Wait for MySQL to be ready
+for i in {1..30}; do
+    if mysqladmin ping &>/dev/null; then
+        break
+    fi
+    log "Waiting for MySQL to start..."
+    sleep 1
+done
+
 # Secure MySQL installation
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';"
+mysql -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('${MYSQL_ROOT_PASSWORD}');"
 mysql -e "DELETE FROM mysql.user WHERE User='';"
 mysql -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
 mysql -e "DROP DATABASE IF EXISTS test;"
@@ -45,15 +57,15 @@ mysql -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
 mysql -e "FLUSH PRIVILEGES;"
 
 # Create PowerDNS database and user
-mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+mysql -u root <<EOF
 CREATE DATABASE IF NOT EXISTS powerdns;
 CREATE USER IF NOT EXISTS 'pdns'@'localhost' IDENTIFIED BY '${PDNS_DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON powerdns.* TO 'pdns'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-# Import PowerDNS schema
-mysql -u root -p"${MYSQL_ROOT_PASSWORD}" powerdns < /usr/share/pdns-backend-mysql/schema.mysql.sql
+# Import PowerDNS schema (ignore errors if tables already exist)
+mysql -u root powerdns < /usr/share/pdns-backend-mysql/schema/schema.mysql.sql 2>/dev/null || true
 
 # Configure PowerDNS
 log "Configuring PowerDNS..."
@@ -130,13 +142,19 @@ cd /workspace/CitadelDNS/frontend
 npm install
 npm run build
 
-# Reload systemd and start services
+# Start services
 log "Starting services..."
-systemctl daemon-reload
-systemctl enable --now mysql
-systemctl enable --now pdns
-systemctl enable --now citadeldns
-systemctl enable --now citadeldns-frontend
+service mariadb start || service mysql start
+/usr/sbin/pdns_server --daemon=no --guardian=no --config-dir=/etc/powerdns > pdns.log 2>&1 &
+cd /workspace/CitadelDNS && python3 src/app.py > backend.log 2>&1 &
+cd /workspace/CitadelDNS/frontend && npm run preview > frontend.log 2>&1 &
+
+# Wait for services to start
+sleep 5
+
+# Check service status
+log "Service status:"
+ps aux | grep -E "pdns_server|app.py|npm" | grep -v grep
 
 # Print setup information
 log "Setup completed successfully!"
