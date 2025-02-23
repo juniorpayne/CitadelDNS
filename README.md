@@ -8,10 +8,12 @@ CitadelDNS is an enterprise-grade DNS management system built on top of PowerDNS
 - Clean and intuitive React frontend
 - Built on PowerDNS for reliability and performance
 - Automatic zone creation
-- Support for A and TXT records
+- Support for A, AAAA, and TXT records
+- CRUD operations (Create, Read, Update, Delete) for all record types
 - Direct database integration for better performance
 - Simple and intuitive API design
 - Modern UI with Mantine components
+- Modular and maintainable codebase
 
 ## Requirements
 
@@ -78,7 +80,11 @@ npm run dev
 
 ## API Documentation
 
-### Create A Record
+The API provides comprehensive CRUD operations for managing DNS records. Here are some examples:
+
+### Create Records
+
+#### Create A Record (IPv4)
 ```http
 POST /api/v1/zones/{zone_name}/records/a
 ```
@@ -89,6 +95,77 @@ Request body:
     "name": "www",
     "content": "192.168.1.100",
     "ttl": 3600
+}
+```
+
+#### Create AAAA Record (IPv6)
+```http
+POST /api/v1/zones/{zone_name}/records/aaaa
+```
+
+Request body:
+```json
+{
+    "name": "www",
+    "content": "2001:db8::1",
+    "ttl": 3600
+}
+```
+
+#### Create TXT Record
+```http
+POST /api/v1/zones/{zone_name}/records/txt
+```
+
+Request body:
+```json
+{
+    "name": "verification",
+    "content": "google-site-verification=abc123def456",
+    "ttl": 3600
+}
+```
+
+### Modify Records
+
+You can modify any record type using the PUT endpoint:
+
+```http
+PUT /api/v1/zones/{zone_name}/records/{record_type}/{record_name}
+```
+
+Example (modifying an A record):
+```json
+{
+    "name": "www",
+    "content": "192.168.1.200",
+    "ttl": 7200
+}
+```
+
+### Delete Records
+
+To delete a record:
+
+```http
+DELETE /api/v1/zones/{zone_name}/records/{record_type}/{record_name}
+```
+
+### Response Format
+
+All endpoints return a consistent response format:
+
+Success Response:
+```json
+{
+    "message": "Operation completed successfully"
+}
+```
+
+Error Response:
+```json
+{
+    "detail": "Error message describing what went wrong"
 }
 ```
 
