@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 import mysql.connector
-from src.app import app, get_db_connection
+from src.app import app
+from src.database.db_operations import DatabaseManager
 
 @pytest.fixture
 def client():
