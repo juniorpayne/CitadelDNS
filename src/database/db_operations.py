@@ -63,18 +63,12 @@ class DatabaseManager:
             
             if new_ttl is not None:
                 cursor.execute(
-                    """UPDATE records r
-                       JOIN domains d ON r.domain_id = d.id
-                       SET r.content = %s, r.ttl = %s
-                       WHERE d.name = %s AND r.name = %s AND r.type = %s""",
+                    "UPDATE records r JOIN domains d ON r.domain_id = d.id SET r.content = %s, r.ttl = %s WHERE d.name = %s AND r.name = %s AND r.type = %s",
                     (new_content, new_ttl, zone_name, record_name, record_type)
                 )
             else:
                 cursor.execute(
-                    """UPDATE records r
-                       JOIN domains d ON r.domain_id = d.id
-                       SET r.content = %s
-                       WHERE d.name = %s AND r.name = %s AND r.type = %s""",
+                    "UPDATE records r JOIN domains d ON r.domain_id = d.id SET r.content = %s WHERE d.name = %s AND r.name = %s AND r.type = %s",
                     (new_content, zone_name, record_name, record_type)
                 )
             
@@ -96,9 +90,7 @@ class DatabaseManager:
             cursor = conn.cursor(dictionary=True)
             
             cursor.execute(
-                """DELETE r FROM records r
-                   JOIN domains d ON r.domain_id = d.id
-                   WHERE d.name = %s AND r.name = %s AND r.type = %s""",
+                "DELETE r FROM records r JOIN domains d ON r.domain_id = d.id WHERE d.name = %s AND r.name = %s AND r.type = %s",
                 (zone_name, record_name, record_type)
             )
             
@@ -120,9 +112,7 @@ class DatabaseManager:
             cursor = conn.cursor(dictionary=True)
             
             cursor.execute(
-                """SELECT r.* FROM records r
-                   JOIN domains d ON r.domain_id = d.id
-                   WHERE d.name = %s AND r.name = %s AND r.type = %s""",
+                "SELECT r.* FROM records r JOIN domains d ON r.domain_id = d.id WHERE d.name = %s AND r.name = %s AND r.type = %s",
                 (zone_name, record_name, record_type)
             )
             
